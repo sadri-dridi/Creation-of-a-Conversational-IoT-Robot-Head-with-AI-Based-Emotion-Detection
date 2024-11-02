@@ -1,0 +1,130 @@
+#Install this data set from Kaggle: https://www.kaggle.com/datasets/msambare/fer2013
+#pip install tensorflow keras opencv-python scikit-learn
+
+'''
+Explanation of the Code:
+Step 2: Loads and augments the FER-2013 dataset using ImageDataGenerator. Replace train_dir and val_dir with the paths to your dataset.
+Step 3: Defines a CNN model with three convolutional layers, followed by max-pooling layers, a dense hidden layer, and a final output layer with seven classes for emotions.
+Step 4: Trains the model for 50 epochs with training and validation data.
+Step 5: Evaluates the model with a classification report and confusion matrix.
+Step 6: Tests the model on real-time video from the webcam, displaying detected emotions.
+'''
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.metrics import classification_report, confusion_matrix
+import numpy as np
+import cv2
+import os
+
+# Step 2: Preprocess the Data
+# Set up directories for training and validation data
+train_dir = 'path/to/train/dataset'  # Replace with your dataset path
+val_dir = 'path/to/validation/dataset'  # Replace with your dataset path
+
+# Image augmentation for training data
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=30,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+val_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(48, 48),
+    batch_size=64,
+    color_mode="grayscale",
+    class_mode='categorical'
+)
+
+validation_generator = val_datagen.flow_from_directory(
+    val_dir,
+    target_size=(48, 48),
+    batch_size=64,
+    color_mode="grayscale",
+    class_mode='categorical'
+)
+
+# Step 3: Build the Model Architecture
+model = Sequential([
+    Conv2D(32, (3,3), activation='relu', input_shape=(48, 48, 1)),
+    MaxPooling2D(2, 2),
+    
+    Conv2D(64, (3,3), activation='relu'),
+    MaxPooling2D(2, 2),
+    
+    Conv2D(128, (3,3), activation='relu'),
+    MaxPooling2D(2, 2),
+    
+    Flatten(),
+    Dense(256, activation='relu'),
+    Dropout(0.5),
+    Dense(7, activation='softmax')  # Assuming 7 classes of emotions
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.summary()
+
+# Step 4: Train the Model
+epochs = 50
+
+history = model.fit(
+    train_generator,
+    epochs=epochs,
+    validation_data=validation_generator
+)
+
+# Step 5: Evaluate the Model
+# Predict on the validation data
+val_predictions = model.predict(validation_generator)
+val_predictions = np.argmax(val_predictions, axis=1)
+
+# Get the true labels
+true_labels = validation_generator.classes
+
+# Print classification report and confusion matrix
+print("Classification Report:\n", classification_report(true_labels, val_predictions, target_names=validation_generator.class_indices.keys()))
+print("Confusion Matrix:\n", confusion_matrix(true_labels, val_predictions))
+
+# Step 6: Test the Model on Real-time Video (Optional)
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    
+    # Convert to grayscale and resize
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face = cv2.resize(gray, (48, 48))
+    face = np.expand_dims(face, axis=0)
+    face = np.expand_dims(face, axis=-1)
+    face = face / 255.0
+    
+    # Predict emotion
+    emotion_prediction = model.predict(face)
+    emotion_label = np.argmax(emotion_prediction)
+    
+    # Map the predicted label to emotion name
+    emotion_dict = {0: "Angry", 1: "Disgust", 2: "Fear", 3: "Happy", 4: "Sad", 5: "Surprise", 6: "Neutral"}
+    emotion_text = emotion_dict[emotion_label]
+    
+    # Display the result on the frame
+    cv2.putText(frame, f"Emotion: {emotion_text}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    cv2.imshow('Facial Expression Recognition', frame)
+    
+    # Exit on 'q' key
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
